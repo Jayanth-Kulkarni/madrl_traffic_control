@@ -1,3 +1,13 @@
+try:
+    sys.path.append(os.path.join(os.path.dirname(
+        __file__), '..', '..', '..', '..', "tools"))  # tutorial in tests
+    sys.path.append(os.path.join(os.environ.get("SUMO_HOME", os.path.join(
+        os.path.dirname(__file__), "..", "..", "..")), "tools"))  # tutorial in docs
+    from sumolib import checkBinary  # noqa
+except ImportError:
+    sys.exit(
+        "please declare environment variable 'SUMO_HOME' as the root directory of your sumo installation (it should contain folders 'bin', 'tools' and 'docs')")
+
 import traci
 import math
 from collections import defaultdict
@@ -213,3 +223,25 @@ def get_avg_waiting_time():
 
     avg_wait_time = total_waiting_time / (total_waiting_time + total_moving_time)
     return avg_wait_time
+
+if __name__ == "__main__":
+    options = get_options()
+
+    # this script has been called from the command line. It will start sumo as a
+    # server, then connect and run
+    if options.nogui:
+        sumoBinary = checkBinary('sumo')
+    else:
+        sumoBinary = checkBinary('sumo-gui')
+
+    # first, generate the route file for this simulation
+    # generate_routefile()
+    # generate_detectorfile()
+    # this is the normal way of using traci. sumo is started as a
+    # subprocess and then the python script connects and runs
+    traci.start([sumoBinary,"-c", "hello.sumocfg","--tripinfo-output", "tripinfo.xml"])
+    Matrix = initialize_matrix()
+    t = get_lane_coordinates()
+    State_Space = get_vehicle_info(Matrix,t)
+    # get_lane_coordinates()
+    # run2()
