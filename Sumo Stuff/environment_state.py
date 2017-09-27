@@ -1,3 +1,14 @@
+from __future__ import absolute_import
+from __future__ import print_function
+from __future__ import division
+import os
+import sys
+import optparse
+import subprocess
+import random
+from collections import defaultdict
+import csv
+
 try:
     sys.path.append(os.path.join(os.path.dirname(
         __file__), '..', '..', '..', '..', "tools"))  # tutorial in tests
@@ -61,7 +72,7 @@ def print_matrix(matrix):
         for j in range(0, MAX_HEIGHT):
             output_str += str(matrix[i][j]) + "\t"
         output_str += "\n"
-    print output_str
+    print (output_str)
 
 
 def adjust_matrix_for_lanes(matrix):
@@ -203,7 +214,7 @@ def get_avg_waiting_time_v1():
 
         # makes sure we don't include avg wait time from vehicles no longer on the network
         avg_wait_time +=  vehicle_wait_times[vehicle_id]['avg_wait_time']
-    avg_wait_time = avg_wait_time / len(vehicle_ids)
+        avg_wait_time =  avg_wait_time / len(vehicle_ids) if len(vehicle_ids) else 0
 
     return avg_wait_time
 
@@ -224,24 +235,69 @@ def get_avg_waiting_time():
     avg_wait_time = total_waiting_time / (total_waiting_time + total_moving_time)
     return avg_wait_time
 
+total_waiting_time_1 = 0
+total_moving_time_1 = 0
+def get_avg_waiting_time_v2():
+    gamma = 0
+    global total_moving_time_1, total_waiting_time_1
+    vehicle_ids = traci.vehicle.getIDList()
+    for vehicle_id in vehicle_ids:
+        if traci.vehicle.getSpeed(vehicle_id) < 0.1:
+            total_waiting_time_1 = (gamma*total_waiting_time_1) + 1
+        else:
+            total_moving_time_1 = (gamma*total_moving_time_1) + 1
+    avg_wait_time = total_waiting_time_1 / (total_waiting_time_1 + total_moving_time_1)
+    return avg_wait_time
+
+def get_options():
+    optParser = optparse.OptionParser()
+    optParser.add_option("--nogui", action="store_true",
+                         default=False, help="run the commandline version of sumo")
+    options, args = optParser.parse_args()
+    return options
+
+
+from matplotlib import pyplot as plt
+def plotthedata(a,b,c):
+    plt.legend([a[0],b[0],c[0]],["Total Average", "Vehicle-wise Average","Vehicle-wise Average with gamma"])
+    plt.plot(a,'r',label="Total Average")
+    plt.plot(b,'b',label="Vehicle-wise Average")
+    plt.plot(c,'g',label="Vehicle-wise Average with gamma")
+    legend = plt.legend(loc='upper center', shadow=True)
+    frame = legend.get_frame()
+    frame.set_facecolor('0.90')
+    plt.ylabel("Average delay per vehicle")
+    plt.xlabel("Time")
+    plt.show()
+
+def plotit(a):
+    plt.plot(a)
+    plt.ylabel("Average delay per vehicle")
+    plt.xlabel("Time")
+    plt.show()
+
+def run():
+    append_data = []
+    append_data_1 = []
+    append_data_2 = []
+    step = 0
+    while traci.simulation.getMinExpectedNumber() > 0:
+        traci.simulationStep()
+        append_data.append(get_avg_waiting_time())
+        append_data_1.append(get_avg_waiting_time_v1())
+        append_data_2.append(get_avg_waiting_time_v2())
+        step += 1
+    plotthedata(append_data,append_data_1,append_data_2)
+    plotit(append_data)
+    traci.close()
+    sys.stdout.flush()
+
 if __name__ == "__main__":
     options = get_options()
 
-    # this script has been called from the command line. It will start sumo as a
-    # server, then connect and run
     if options.nogui:
         sumoBinary = checkBinary('sumo')
     else:
         sumoBinary = checkBinary('sumo-gui')
-
-    # first, generate the route file for this simulation
-    # generate_routefile()
-    # generate_detectorfile()
-    # this is the normal way of using traci. sumo is started as a
-    # subprocess and then the python script connects and runs
-    traci.start([sumoBinary,"-c", "hello.sumocfg","--tripinfo-output", "tripinfo.xml"])
-    Matrix = initialize_matrix()
-    t = get_lane_coordinates()
-    State_Space = get_vehicle_info(Matrix,t)
-    # get_lane_coordinates()
-    # run2()
+    traci.start([sumoBinary,"-c", "hello.sumocfg"])
+    run()
