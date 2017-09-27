@@ -204,7 +204,7 @@ def extract_lanes(Matrix,t):
         col = 0
         Max_column = [max(a,key=lambda x:x[1]) for a in zip(*lane)]
         Max_row = [max(Max_column[n:n+5],key=lambda x:x[1]) for n in range(0, len(Max_column), 5)]
-        print(Max_row)
+        # print(Max_row)
         # exit()
         # subList = [max(A[i][n:n+2],key=lambda x:x[1]) for i in range(0,len(A)) for n in range(0, len(A[0]), 2)]
         # print subList
