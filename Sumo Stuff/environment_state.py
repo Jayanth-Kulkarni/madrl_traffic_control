@@ -19,9 +19,12 @@ except ImportError:
     sys.exit(
         "please declare environment variable 'SUMO_HOME' as the root directory of your sumo installation (it should contain folders 'bin', 'tools' and 'docs')")
 
+
 import traci
 import math
 from collections import defaultdict
+from matplotlib import pyplot as plt
+from Dqn import Learner
 
 CAR_WIDTH = 5
 MAX_HEIGHT = 200 / CAR_WIDTH
@@ -32,65 +35,6 @@ lane_ids = ["left-right-1_0", "left-right-2_0",
             "down-up-1_0", "down-up-2_0", ]
 
 
-def initialize_matrix():
-    vehicle_vel = 0  # default
-    vehicle_present = -1  # default
-    vehicle_id = -999
-    dtse_map = [[(vehicle_present, vehicle_vel, vehicle_id)
-                 for x in range(MAX_LENGTH)] for y in range(MAX_HEIGHT)]
-    return dtse_map
-
-
-def get_lane_dimensions():
-    # horizontal lane
-    lane_width = traci.lane.getShape(lane_ids[0])[0][
-        1] - traci.lane.getShape(lane_ids[3])[0][1]
-    horizontal_x_min = 0.0
-    horizontal_y_min = traci.lane.getShape(lane_ids[0])[0][1]
-    horizontal_x_max = 200.0
-    horizontal_y_max = horizontal_y_min + (2 * lane_width)
-
-    # vertical lane
-    vertical_x_min = traci.lane.getShape(lane_ids[4])[0][0]
-    vertical_y_min = 0.0
-    vertical_x_max = vertical_x_min + (2 * lane_width)
-    vertical_y_max = 200.0
-
-    return {'horizontal_x_min': horizontal_x_min / CAR_WIDTH,
-            'horizontal_x_max': horizontal_x_max / CAR_WIDTH,
-            'horizontal_y_min': horizontal_y_min / CAR_WIDTH,
-            'horizontal_y_max': horizontal_y_max / CAR_WIDTH,
-            'vertical_x_min': vertical_x_min / CAR_WIDTH,
-            'vertical_x_max': vertical_x_max / CAR_WIDTH,
-            'vertical_y_min': vertical_y_min / CAR_WIDTH,
-            'vertical_y_max': vertical_y_max / CAR_WIDTH}
-
-
-def print_matrix(matrix):
-    output_str = ""
-    for i in range(0, MAX_LENGTH):
-        for j in range(0, MAX_HEIGHT):
-            output_str += str(matrix[i][j]) + "\t"
-        output_str += "\n"
-    print (output_str)
-
-
-def adjust_matrix_for_lanes(matrix):
-    lane_dimensions = get_lane_dimensions()
-    for x in range(0, MAX_LENGTH):
-        for y in range(0, MAX_HEIGHT):
-            if x > lane_dimensions.get('vertical_x_min') and x < lane_dimensions.get('vertical_x_max')\
-                    and y > lane_dimensions.get('vertical_y_min') and y < lane_dimensions.get('vertical_y_max'):
-                matrix[x][y][0] = 0
-            if x > lane_dimensions.get('horizontal_x_min') and x < lane_dimensions.get('horizontal_x_max')\
-                    and y > lane_dimensions.get('horizontal_y_min') and y < lane_dimensions.get('horizontal_y_max'):
-                matrix[x][y][0] = 0
-
-    return matrix
-
-
-# marks cars in the order L -> R
-# TODO: flip? DONE
 def get_left_right_dtse(x_min, x_max, y):
     vehicle_vel = 0  # default
     vehicle_present = -1  # default
@@ -108,7 +52,7 @@ def get_left_right_dtse(x_min, x_max, y):
             dtse_map[block] = [1, vehicle_vel, vehicle_id]
     return dtse_map
 
-# marks cars in the order L -> R
+
 def get_right_left_dtse(x_min, x_max, y):
     vehicle_vel = 0  # default
     vehicle_present = -1  # default
@@ -125,8 +69,7 @@ def get_right_left_dtse(x_min, x_max, y):
             dtse_map[block] = [1, vehicle_vel, vehicle_id]
     return dtse_map
 
-# marks cars in the order Top -> Bottom
-# TODO: flip? DONE
+
 def get_up_down_dtse(y_min, y_max, x):
     vehicle_vel = 0  # default
     vehicle_present = -1  # default
@@ -144,7 +87,7 @@ def get_up_down_dtse(y_min, y_max, x):
             dtse_map[block] = [1, vehicle_vel, vehicle_id]
     return dtse_map
 
-# marks cars in the order Top -> Bottom
+
 def get_down_up_dtse(y_min, y_max, x):
     vehicle_vel = 0  # default
     vehicle_present = -1  # default
@@ -160,144 +103,178 @@ def get_down_up_dtse(y_min, y_max, x):
             block = int((y_max - y_pos) / CAR_WIDTH)
             # print x_pos, y_pos, block
             dtse_map[block] = [1, vehicle_vel, vehicle_id]
+
     return dtse_map
 
 
+def normalize_dtse(dtse):
+    max_vel = 0
+    for (vehicle_present, vehicle_vel, vehicle_id) in dtse:
+        max_vel = max(max_vel, vehicle_vel)
+    # avoid divide by zero
+    if max_vel == 0:
+        max_vel = 1
+    normalized_dtse = [[vehicle_present, (vehicle_vel/max_vel), vehicle_id] for (vehicle_present, vehicle_vel, vehicle_id) in dtse]
+    return normalized_dtse
+
+
 def get_dtse_for_junction():
+    # NOTE: all outgoing lanes have been commented because DTSE
+    # should be calculated only for incoming lanes
+
     # left-right-1
     [(x_min, y), (x_max, y1)] = traci.lane.getShape('left-right-1_0')
     lr_1_dtse = get_left_right_dtse(x_min, x_max, y)
 
-    # left-right-2  # block size will be wrong near the junction
-    [(x_min, y), (x_max, y1)] = traci.lane.getShape('left-right-2_0')
-    lr_2_dtse = get_left_right_dtse(x_min, x_max, y)
+    # # left-right-2  # block size will be wrong near the junction
+    # [(x_min, y), (x_max, y1)] = traci.lane.getShape('left-right-2_0')
+    # lr_2_dtse = get_left_right_dtse(x_min, x_max, y)
 
     # right-left-1
     [(x_max, y), (x_min, y1)] = traci.lane.getShape('right-left-1_0')
     rl_1_dtse = get_left_right_dtse(x_min, x_max, y)
 
-    # right-left-2  # block size will be wrong near the junction
-    [(x_max, y), (x_min, y1)] = traci.lane.getShape('right-left-2_0')
-    rl_2_dtse = get_left_right_dtse(x_min, x_max, y)
+    # # right-left-2  # block size will be wrong near the junction
+    # [(x_max, y), (x_min, y1)] = traci.lane.getShape('right-left-2_0')
+    # rl_2_dtse = get_left_right_dtse(x_min, x_max, y)
 
     # up-down-1
     [(x, y_max), (x1, y_min)] = traci.lane.getShape('up-down-1_0')
     ud_1_dtse = get_up_down_dtse(y_min, y_max, x)
 
-    # up-down-2  # block size will be wrong near the junction
-    [(x, y_max), (x1, y_min)] = traci.lane.getShape('up-down-2_0')
-    ud_2_dtse = get_up_down_dtse(y_min, y_max, x)
+    # # up-down-2  # block size will be wrong near the junction
+    # [(x, y_max), (x1, y_min)] = traci.lane.getShape('up-down-2_0')
+    # ud_2_dtse = get_up_down_dtse(y_min, y_max, x)
 
     # down-up-1
     [(x, y_min), (x1, y_max)] = traci.lane.getShape('down-up-1_0')
     du_1_dtse = get_down_up_dtse(y_min, y_max, x)
 
-    # down-up-2  # block size will be wrong near the junction
-    [(x, y_min), (x1, y_max)] = traci.lane.getShape('down-up-2_0')
-    du_2_dtse = get_down_up_dtse(y_min, y_max, x)
+    # # down-up-2  # block size will be wrong near the junction
+    # [(x, y_min), (x1, y_max)] = traci.lane.getShape('down-up-2_0')
+    # du_2_dtse = get_down_up_dtse(y_min, y_max, x)
 
-vehicle_wait_times = defaultdict(lambda: defaultdict(lambda: 0.0))
+    dtse_list = [lr_1_dtse, rl_1_dtse, ud_1_dtse, du_1_dtse]
+    normalized_dtse_list = []
+
+    for dtse in dtse_list:
+        normalized_dtse_list.append(normalize_dtse(dtse))
+
+	boolean_dtse = [int(x >= 0) for x in normalized_dtse_list]
+	trimed_normalized = normalized_dtse_list[:10]
+    return trimed_normalized
+
+
 min_speed = 0.1
 # call this at every step
 # this function uses too much space because of the dict
-def get_avg_waiting_time_v1():
+def get_avg_waiting_time_v1(vehicle_wait_times):
     avg_wait_time = 0.0
     vehicle_ids = traci.vehicle.getIDList()
     for vehicle_id in vehicle_ids:
         if traci.vehicle.getSpeed(vehicle_id) < 0.1:
-            vehicle_wait_times[vehicle_id]['t_wait'] += 1
-        else:
-            vehicle_wait_times[vehicle_id]['t_move'] += 1
+            vehicle_wait_times[vehicle_id] += 1
 
-        vehicle_wait_times[vehicle_id]['avg_wait_time'] =\
-            vehicle_wait_times[vehicle_id]['t_wait'] / (vehicle_wait_times[vehicle_id]['t_wait'] + vehicle_wait_times[vehicle_id]['t_move'])
-
-        # makes sure we don't include avg wait time from vehicles no longer on the network
-        avg_wait_time +=  vehicle_wait_times[vehicle_id]['avg_wait_time']
-        avg_wait_time =  avg_wait_time / len(vehicle_ids) if len(vehicle_ids) else 0
+    total_waiting_time = sum(vehicle_wait_times.values())  # sum over dictionary
+    n_vehicles = len(vehicle_wait_times.keys())
+    avg_wait_time = total_waiting_time / n_vehicles if n_vehicles > 0 else 0
 
     return avg_wait_time
 
-total_waiting_time = 0
-total_moving_time = 0
+
+# total_waiting_time = 0
+# total_moving_time = 0
 # call this at every step
-# TODO: change it to a weighted average
 # total_moving_time = (gamma * total_moving_time) + total_moving_time
-def get_avg_waiting_time():
-    global total_moving_time, total_waiting_time
+def get_avg_waiting_frac(total_waiting_time, total_moving_time, gamma = 1.0):
+    total_moving_time, total_waiting_time
     vehicle_ids = traci.vehicle.getIDList()
     for vehicle_id in vehicle_ids:
         if traci.vehicle.getSpeed(vehicle_id) < 0.1:
-            total_waiting_time = total_waiting_time + 1
+            total_waiting_time = gamma * total_waiting_time + 1
         else:
-            total_moving_time = total_moving_time + 1
+            total_moving_time = gamma * total_moving_time + 1
 
-    avg_wait_time = total_waiting_time / (total_waiting_time + total_moving_time)
-    return avg_wait_time
-
-total_waiting_time_1 = 0
-total_moving_time_1 = 0
-def get_avg_waiting_time_v2():
-    gamma = 0
-    global total_moving_time_1, total_waiting_time_1
-    vehicle_ids = traci.vehicle.getIDList()
-    for vehicle_id in vehicle_ids:
-        if traci.vehicle.getSpeed(vehicle_id) < 0.1:
-            total_waiting_time_1 = (gamma*total_waiting_time_1) + 1
-        else:
-            total_moving_time_1 = (gamma*total_moving_time_1) + 1
-    avg_wait_time = total_waiting_time_1 / (total_waiting_time_1 + total_moving_time_1)
-    return avg_wait_time
-
-def get_options():
-    optParser = optparse.OptionParser()
-    optParser.add_option("--nogui", action="store_true",
-                         default=False, help="run the commandline version of sumo")
-    options, args = optParser.parse_args()
-    return options
+    avg_wait_frac = total_waiting_time / (total_waiting_time + total_moving_time) if len(vehicle_ids) > 0 else 0
+    return avg_wait_frac
 
 
-from matplotlib import pyplot as plt
-def plotthedata(a,b,c):
-    plt.legend([a[0],b[0],c[0]],["Total Average", "Vehicle-wise Average","Vehicle-wise Average with gamma"])
-    plt.plot(a,'r',label="Total Average")
-    plt.plot(b,'b',label="Vehicle-wise Average")
-    plt.plot(c,'g',label="Vehicle-wise Average with gamma")
-    legend = plt.legend(loc='upper center', shadow=True)
-    frame = legend.get_frame()
-    frame.set_facecolor('0.90')
-    plt.ylabel("Average delay per vehicle")
-    plt.xlabel("Time")
+def my_plot(data, x_label='time', y_label='average waiting fraction'):
+    plt.plot(data)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
     plt.show()
 
-def plotit(a):
-    plt.plot(a)
-    plt.ylabel("Average delay per vehicle")
-    plt.xlabel("Time")
-    plt.show()
 
-def run():
-    append_data = []
-    append_data_1 = []
-    append_data_2 = []
+# define the agent's action
+# pass the green duration for the next phase
+# NOTE: make sure to call this only at the beginning of the phase or else
+#       you may end up resetting the existing phase duration
+# default green duration is 31s
+def act():
+    tls = traci.trafficlights.getIDList()[0]
+    curr_phase = traci.trafficlights.getPhase(tls)
+    # we can change the duration only at the beginning of phases 0, 3, 6, 9
+    if curr_phase % 3 == 0:
+        print ("setting phase to {}".format(green_duration))
+        traci.trafficlights.setPhaseDuration(tls, green_duration)
+
+
+gamma_avg_wait_frac_list = defaultdict(list)
+avg_waiting_time_list = []
+def test_workflow():
+    vehicle_wait_times = defaultdict(lambda: 0.0)
     step = 0
-    while traci.simulation.getMinExpectedNumber() > 0:
-        traci.simulationStep()
-        append_data.append(get_avg_waiting_time())
-        append_data_1.append(get_avg_waiting_time_v1())
-        append_data_2.append(get_avg_waiting_time_v2())
+    while step < 1000:
+        # this represents the avg_waiting_frac the last time we took an action
+        vehicle_wait_times = run_sim_step(step, vehicle_wait_times)
         step += 1
-    plotthedata(append_data,append_data_1,append_data_2)
-    plotit(append_data)
-    traci.close()
-    sys.stdout.flush()
 
-if __name__ == "__main__":
-    options = get_options()
+    # plot metrics
+    my_plot(avg_waiting_time_list)
+    for gamma in [0.1*x for x in range(1, 11)]:
+        my_plot(y_label='gamma={} avg_wait_frac'.format(gamma))
 
-    if options.nogui:
-        sumoBinary = checkBinary('sumo')
-    else:
-        sumoBinary = checkBinary('sumo-gui')
-    traci.start([sumoBinary,"-c", "hello.sumocfg"])
-    run()
+
+def run_sim_step(step, vehicle_wait_times):
+    tls = traci.trafficlights.getIDList()[0]
+    prev_phase = traci.trafficlights.getPhase(tls)
+
+    # get avg_waiting_time from previous action till now
+    avg_waiting_time = get_avg_waiting_time_v1(vehicle_wait_times)
+    avg_waiting_time_list.append(avg_waiting_time)
+
+    total_waiting_time = defaultdict(lambda: 0)
+    total_moving_time = defaultdict(lambda: 0)
+    for gamma in [0.1*x for x in range(1, 11)]:
+        gamma_avg_wait_frac_list[gamma].append(get_avg_waiting_frac(total_waiting_time[gamma], total_moving_time[gamma], gamma))
+
+    traci.simulationStep()
+    curr_phase = traci.trafficlights.getPhase(tls)
+
+    if (curr_phase != prev_phase) and (curr_phase % 3 == 0):
+        # reset everyone's waiting time
+        vehicle_wait_times = defaultdict(lambda: 0.0)
+
+        # phase has changed and the agent needs to do something!
+        # get DTSE
+        dtse = get_dtse_for_junction()
+        print(len(dtse))
+        # compute reward
+        # if it has reduced, we get a postive reward!
+        reward = avg_waiting_time
+        print ("reward!", reward)
+
+        # act!
+        action = agent.act(dtse)
+        act(20)
+
+    return vehicle_wait_times
+
+def main():
+    traci.start([sumoBinary,"-c", "hello.sumocfg","--tripinfo-output", "tripinfo.xml"])
+    traci.start(sumoCmd)
+    action_space_size = 50
+    state_space_size = 10
+    agent = Learner(state_space_size, action_space_size, 1.0)
+    test_workflow()
