@@ -1,7 +1,30 @@
+from __future__ import absolute_import
+from __future__ import print_function
+from __future__ import division
+import os
+import sys
+import optparse
+import subprocess
+import random
+from collections import defaultdict
+import csv
+
+try:
+    sys.path.append(os.path.join(os.path.dirname(
+        __file__), '..', '..', '..', '..', "tools"))  # tutorial in tests
+    sys.path.append(os.path.join(os.environ.get("SUMO_HOME", os.path.join(
+        os.path.dirname(__file__), "..", "..", "..")), "tools"))  # tutorial in docs
+    from sumolib import checkBinary  # noqa
+except ImportError:
+    sys.exit(
+        "please declare environment variable 'SUMO_HOME' as the root directory of your sumo installation (it should contain folders 'bin', 'tools' and 'docs')")
+
+
 import traci
 import math
 from collections import defaultdict
 from matplotlib import pyplot as plt
+from Dqn import Learner
 
 CAR_WIDTH = 5
 MAX_HEIGHT = 200 / CAR_WIDTH
@@ -137,7 +160,12 @@ def get_dtse_for_junction():
     for dtse in dtse_list:
         normalized_dtse_list.append(normalize_dtse(dtse))
 
-    return normalized_dtse_list
+    final_dtse = []
+    for x in normalized_dtse_list:
+        for y in x:
+            final_dtse.append(y[1])
+    print(len(final_dtse))
+    return final_dtse
 
 
 min_speed = 0.1
@@ -149,12 +177,11 @@ def get_avg_waiting_time_v1(vehicle_wait_times):
     for vehicle_id in vehicle_ids:
         if traci.vehicle.getSpeed(vehicle_id) < 0.1:
             vehicle_wait_times[vehicle_id] += 1
- 
     total_waiting_time = sum(vehicle_wait_times.values())  # sum over dictionary
     n_vehicles = len(vehicle_wait_times.keys())
     avg_wait_time = total_waiting_time / n_vehicles if n_vehicles > 0 else 0
 
-    return avg_wait_time
+    return -avg_wait_time
 
 
 # total_waiting_time = 0
@@ -186,35 +213,35 @@ def my_plot(data, x_label='time', y_label='average waiting fraction'):
 # NOTE: make sure to call this only at the beginning of the phase or else
 #       you may end up resetting the existing phase duration
 # default green duration is 31s
-def act(green_duration):
+def act1(action):
     tls = traci.trafficlights.getIDList()[0]
     curr_phase = traci.trafficlights.getPhase(tls)
     # we can change the duration only at the beginning of phases 0, 3, 6, 9
     if curr_phase % 3 == 0:
-        print "setting phase to {}".format(green_duration)
-        traci.trafficlights.setPhaseDuration(tls, green_duration)
+        print ("setting phase to {}".format(action))
+        traci.trafficlights.setPhaseDuration(tls, action)
 
 
 gamma_avg_wait_frac_list = defaultdict(list)
 avg_waiting_time_list = []
-def test_workflow():
+def test_workflow(agent):
     vehicle_wait_times = defaultdict(lambda: 0.0)
     step = 0
-    while step < 1000:
+    while step < 100000:
         # this represents the avg_waiting_frac the last time we took an action
-        vehicle_wait_times = run_sim_step(step, vehicle_wait_times)
+        vehicle_wait_times = run_sim_step(step, vehicle_wait_times,agent)
         step += 1
-
+        if step % 100 == 0:
+            agent.save("traffic.h5")
     # plot metrics
     my_plot(avg_waiting_time_list)
     for gamma in [0.1*x for x in range(1, 11)]:
         my_plot(y_label='gamma={} avg_wait_frac'.format(gamma))
 
 
-def run_sim_step(step, vehicle_wait_times):
+def run_sim_step(step, vehicle_wait_times,agent):
     tls = traci.trafficlights.getIDList()[0]
     prev_phase = traci.trafficlights.getPhase(tls)
-    
     # get avg_waiting_time from previous action till now
     avg_waiting_time = get_avg_waiting_time_v1(vehicle_wait_times)
     avg_waiting_time_list.append(avg_waiting_time)
@@ -234,13 +261,38 @@ def run_sim_step(step, vehicle_wait_times):
         # phase has changed and the agent needs to do something!
         # get DTSE
         dtse = get_dtse_for_junction()
-
+        print(len(dtse))
         # compute reward
         # if it has reduced, we get a postive reward!
         reward = avg_waiting_time
-        print "reward!", reward
+        print ("reward!", reward)
 
         # act!
-        act(20)
+        action = agent.act(dtse)
+        act1(action)
 
     return vehicle_wait_times
+
+def get_options():
+    optParser = optparse.OptionParser()
+    optParser.add_option("--nogui", action="store_true",
+                         default=False, help="run the commandline version of sumo")
+    options, args = optParser.parse_args()
+    return options
+
+def main():
+    options = get_options()
+    if options.nogui:
+        sumoBinary = checkBinary('sumo')
+    else:
+        sumoBinary = checkBinary('sumo-gui')
+    traci.start([sumoBinary,"-c", "hello.sumocfg","--tripinfo-output", "tripinfo.xml"])
+    action_space_size = 50
+    state_space_size = 40
+    agent = Learner(state_space_size, action_space_size, 1.0)
+    print("Weights loaded")
+    agent.load("traffic.h5")
+    test_workflow(agent)
+
+if __name__ == '__main__':
+    main()
