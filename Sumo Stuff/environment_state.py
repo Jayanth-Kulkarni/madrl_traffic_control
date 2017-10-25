@@ -226,6 +226,8 @@ gamma_avg_wait_frac_list = defaultdict(list)
 avg_waiting_time_list = []
 def test_workflow(agent):
     vehicle_wait_times = defaultdict(lambda: 0.0)
+    x_label='time'
+    y_label='average waiting fraction'
     step = 0
     while step < 100000:
         # this represents the avg_waiting_frac the last time we took an action
@@ -236,7 +238,10 @@ def test_workflow(agent):
     # plot metrics
     my_plot(avg_waiting_time_list)
     for gamma in [0.1*x for x in range(1, 11)]:
-        my_plot(y_label='gamma={} avg_wait_frac'.format(gamma))
+        plt.plot(gamma_avg_wait_frac_list[gamma])
+        plt.xlabel(x_label)
+        plt.ylabel('avg_waiting_frac: gamma={}'.format(gamma))
+        plt.show()
 
 
 def run_sim_step(step, vehicle_wait_times,agent):
@@ -290,8 +295,8 @@ def main():
     action_space_size = 50
     state_space_size = 40
     agent = Learner(state_space_size, action_space_size, 1.0)
-    print("Weights loaded")
-    agent.load("traffic.h5")
+    # print("Weights loaded")
+    # agent.load("traffic.h5")
     test_workflow(agent)
 
 if __name__ == '__main__':
