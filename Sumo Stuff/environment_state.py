@@ -8,6 +8,7 @@ import subprocess
 import random
 from collections import defaultdict
 import csv
+import numpy as np
 
 try:
     sys.path.append(os.path.join(os.path.dirname(
@@ -165,7 +166,9 @@ def get_dtse_for_junction():
         for y in x:
             final_dtse.append(y[1])
     print(len(final_dtse))
-    return final_dtse
+    state = np.array(final_dtse)
+    state = state.reshape((1, state.shape[0]))
+    return state
 
 
 min_speed = 0.1
@@ -182,6 +185,20 @@ def get_avg_waiting_time_v1(vehicle_wait_times):
     avg_wait_time = total_waiting_time / n_vehicles if n_vehicles > 0 else 0
 
     return -avg_wait_time
+
+
+tot_vehicle_wait_times = defaultdict(lambda: 0.0)
+def get_avg_waiting_time():
+    avg_wait_time = 0.0
+    vehicle_ids = traci.vehicle.getIDList()
+    for vehicle_id in vehicle_ids:
+        if traci.vehicle.getSpeed(vehicle_id) < 0.1:
+            tot_vehicle_wait_times[vehicle_id] += 1
+    total_waiting_time = sum(tot_vehicle_wait_times.values())  # sum over dictionary
+    n_vehicles = len(tot_vehicle_wait_times.keys())
+    avg_wait_time = total_waiting_time / n_vehicles if n_vehicles > 0 else 0
+
+    return avg_wait_time
 
 
 # total_waiting_time = 0
@@ -224,6 +241,7 @@ def act1(action):
 
 gamma_avg_wait_frac_list = defaultdict(list)
 avg_waiting_time_list = []
+tot_avg_waiting_time_list = []
 def test_workflow(agent):
     vehicle_wait_times = defaultdict(lambda: 0.0)
     x_label='time'
@@ -237,6 +255,12 @@ def test_workflow(agent):
             agent.save("traffic.h5")
     # plot metrics
     my_plot(avg_waiting_time_list)
+
+    plt.plot(tot_avg_waiting_time_list)
+    plt.xlabel(x_label)
+    plt.ylabel('tot_avg_waiting_time')
+    plt.show()
+
     for gamma in [0.1*x for x in range(1, 11)]:
         plt.plot(gamma_avg_wait_frac_list[gamma])
         plt.xlabel(x_label)
@@ -256,6 +280,8 @@ def run_sim_step(step, vehicle_wait_times,agent):
     for gamma in [0.1*x for x in range(1, 11)]:
         gamma_avg_wait_frac_list[gamma].append(get_avg_waiting_frac(total_waiting_time[gamma], total_moving_time[gamma], gamma))
 
+    tot_avg_waiting_time_list.append(get_avg_waiting_time())
+
     traci.simulationStep()
     curr_phase = traci.trafficlights.getPhase(tls)
 
@@ -266,7 +292,6 @@ def run_sim_step(step, vehicle_wait_times,agent):
         # phase has changed and the agent needs to do something!
         # get DTSE
         dtse = get_dtse_for_junction()
-        print(len(dtse))
         # compute reward
         # if it has reduced, we get a postive reward!
         reward = avg_waiting_time
@@ -274,7 +299,10 @@ def run_sim_step(step, vehicle_wait_times,agent):
 
         # act!
         action = agent.act(dtse)
-        act1(action)
+        act1((action+1)*5)
+        new_dtse = get_dtse_for_junction()
+        agent.remember(dtse,action,reward,new_dtse)
+        agent.replay()
 
     return vehicle_wait_times
 
@@ -292,10 +320,12 @@ def main():
     else:
         sumoBinary = checkBinary('sumo-gui')
     traci.start([sumoBinary,"-c", "hello.sumocfg","--tripinfo-output", "tripinfo.xml"])
-    action_space_size = 50
-    state_space_size = 40
+    action_space_size = 10
+    state_space_size = 80
     agent = Learner(state_space_size, action_space_size, 1.0)
-    # print("Weights loaded")
+    # for fst
+    # agent = None
+    print("Weights loaded")
     # agent.load("traffic.h5")
     test_workflow(agent)
 

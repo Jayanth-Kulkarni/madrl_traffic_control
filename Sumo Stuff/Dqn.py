@@ -17,9 +17,10 @@ class Learner:
         self.secondHidden = 1166
         self.regressor = self._build_model()
         self.exploration = exploration
-        self.exploration_decay = 0.995
+        # changed
+        self.exploration_decay = 0.999
         self.min_exploration = 0.01
-        self.memory = deque(maxlen=2000)
+        self.memory = deque(maxlen=1)
         self.batch_size = 200
         self.gamma = 0.95
 
@@ -36,13 +37,14 @@ class Learner:
             action = np.random.choice(range(self.action_size))
         else:
             action = np.argmax(self.regressor.predict(state), axis=1)[0]
-        return action
+        return (action)
 
     def remember(self, state, action, reward, next_state):
         self.memory.append((state, action, reward, next_state))
 
     def replay(self):
-        minibatch = random.sample(list(self.memory), self.batch_size)
+        # changed - replace 1 with self.batch_size
+        minibatch = random.sample(list(self.memory), 1)
         for state, action, reward, next_state in minibatch:
             # print "Reward: {}".format(type(reward))
             target = reward + self.gamma*np.max(self.regressor.predict(next_state)[0])
