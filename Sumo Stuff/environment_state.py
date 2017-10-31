@@ -27,6 +27,7 @@ from collections import defaultdict
 from matplotlib import pyplot as plt
 from Dqn import Learner
 
+sumocmd = [checkBinary('sumo-gui'),"-c", "hello.sumocfg","--tripinfo-output", "tripinfo.xml","--start"]
 CAR_WIDTH = 5
 MAX_HEIGHT = 200 / CAR_WIDTH
 MAX_LENGTH = 200 / CAR_WIDTH
@@ -247,11 +248,16 @@ def test_workflow(agent):
     x_label='time'
     y_label='average waiting fraction'
     step = 0
-    while step < 100000:
-        # this represents the avg_waiting_frac the last time we took an action
-        vehicle_wait_times = run_sim_step(step, vehicle_wait_times,agent)
-        step += 1
-        if step % 100 == 0:
+    epochs = 1000
+    for simulation in range(epochs):
+        traci.start(sumocmd)
+        while step < 10000:
+            # this represents the avg_waiting_frac the last time we took an action
+            vehicle_wait_times = run_sim_step(step, vehicle_wait_times,agent)
+            step += 1
+        traci.close()
+        agent.replay()
+        if simulation % 10 == 0:
             agent.save("traffic.h5")
     # plot metrics
     my_plot(avg_waiting_time_list)
@@ -288,7 +294,6 @@ def run_sim_step(step, vehicle_wait_times,agent):
     if (curr_phase != prev_phase) and (curr_phase % 3 == 0):
         # reset everyone's waiting time
         vehicle_wait_times = defaultdict(lambda: 0.0)
-
         # phase has changed and the agent needs to do something!
         # get DTSE
         dtse = get_dtse_for_junction()
@@ -302,7 +307,7 @@ def run_sim_step(step, vehicle_wait_times,agent):
         act1((action+1)*5)
         new_dtse = get_dtse_for_junction()
         agent.remember(dtse,action,reward,new_dtse)
-        agent.replay()
+
 
     return vehicle_wait_times
 
@@ -319,13 +324,12 @@ def main():
         sumoBinary = checkBinary('sumo')
     else:
         sumoBinary = checkBinary('sumo-gui')
-    traci.start([sumoBinary,"-c", "hello.sumocfg","--tripinfo-output", "tripinfo.xml"])
     action_space_size = 10
     state_space_size = 80
     agent = Learner(state_space_size, action_space_size, 1.0)
     # for fst
     # agent = None
-    print("Weights loaded")
+    # print("Weights loaded")
     # agent.load("traffic.h5")
     test_workflow(agent)
 

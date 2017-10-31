@@ -9,22 +9,22 @@
     <vehicle id="veh2" type="Car" depart="10" route="route0" color="0,0,1" /> -->
 
 	<!-- defines a flow with probabilistic releases. low p => poisson -->
-    <flow id="type1" color="1,1,0"  begin="0" end= "100000" probability="0.06" type="Car">
+    <flow id="type1" color="1,1,0"  begin="0" end= "10000" probability="0.06" type="Car">
 	    <route edges="left-right-1 left-right-2"/>
 	</flow>
 
 	<!-- defines a flow with probabilistic releases. low p => poisson -->
-    <flow id="type2" color="1,0,0"  begin="0" end= "100000" probability="0.05" type="Car">
+    <flow id="type2" color="1,0,0"  begin="0" end= "10000" probability="0.05" type="Car">
 	    <route edges="up-down-1 up-down-2"/>
 	</flow>
 
 	<!-- defines a flow with probabilistic releases. low p => poisson -->
-    <flow id="type3" color="0,0,1"  begin="0" end= "100000" probability="0.045" type="Car">
+    <flow id="type3" color="0,0,1"  begin="0" end= "10000" probability="0.045" type="Car">
 	    <route edges="right-left-1 right-left-2"/>
 	</flow>
 
 	<!-- defines a flow with probabilistic releases. low p => poisson -->
-    <flow id="type4" color="0,1,1"  begin="0" end= "100000" probability="0.065" type="Car">
+    <flow id="type4" color="0,1,1"  begin="0" end= "10000" probability="0.065" type="Car">
 	    <route edges="down-up-1 down-up-2"/>
 	</flow>
 

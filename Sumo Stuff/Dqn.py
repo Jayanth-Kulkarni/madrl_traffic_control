@@ -20,7 +20,7 @@ class Learner:
         # changed
         self.exploration_decay = 0.999
         self.min_exploration = 0.01
-        self.memory = deque(maxlen=1)
+        self.memory = deque(maxlen=20000)
         self.batch_size = 200
         self.gamma = 0.95
 
@@ -44,7 +44,7 @@ class Learner:
 
     def replay(self):
         # changed - replace 1 with self.batch_size
-        minibatch = random.sample(list(self.memory), 1)
+        minibatch = random.sample(list(self.memory), self.batch_size)
         for state, action, reward, next_state in minibatch:
             # print "Reward: {}".format(type(reward))
             target = reward + self.gamma*np.max(self.regressor.predict(next_state)[0])
